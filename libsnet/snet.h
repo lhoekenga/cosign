@@ -9,6 +9,10 @@
 #define ___P(x)		()
 #endif /* __STDC__ */
 
+#if ENABLE_PTHREAD_SUPPORT
+#include <pthread.h>
+#endif
+
 typedef struct {
     int			sn_fd;
     char		*sn_rbuf;
@@ -22,6 +26,11 @@ typedef struct {
     int			sn_flag;
     struct timeval	sn_read_timeout;
     struct timeval	sn_write_timeout;
+
+#if ENABLE_PTHREAD_SUPPORT
+    pthread_mutex_t     mutex;
+#endif
+
 #ifdef HAVE_LIBSSL
     void		*sn_ssl;
 #endif /* HAVE_LIBSSL */

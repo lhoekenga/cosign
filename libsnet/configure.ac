@@ -19,6 +19,7 @@ if test \! x_$with_ssl = x_no; then
 fi
 CHECK_SASL
 CHECK_UNIVERSAL_BINARIES
+CHECK_PTHREADS
 
 # Checks for header files.
 #AC_HEADER_STDC

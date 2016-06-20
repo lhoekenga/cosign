@@ -42,7 +42,7 @@ SRC=	mod_cosign.c \
 	../../common/argcargv.c ../../common/fbase64.c \
 	../../common/mkcookie.c ../../common/rate.c \
 	../../version.c \
-	../../libsnet/snet.c
+	../../libsnet/snet.c ../../common/mutex.c
 
 #   the default target
 all: mod_cosign.la

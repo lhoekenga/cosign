@@ -88,6 +88,8 @@ AC_SUBST(keytabpath)
 AC_ARG_WITH(pam-service, AC_HELP_STRING([--with-pam-service=NAME], [default pam.conf service name for PAM authentication]), cosignpamservice="$withval", cosignpamservice="cosign" )
 AC_SUBST(cosignpamservice)
 
+CHECK_PTHREADS
+
 CHECK_SSL
 
 AC_CHECK_HEADER([openssl/ssl.h], [], [AC_MSG_ERROR([header file <openssl/ssl.h> is required for this software. 

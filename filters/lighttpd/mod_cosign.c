@@ -41,6 +41,8 @@
 #include "cosignpaths.h"
 #include "cosign.h"
 
+#include "ssl_mutex_app.h"
+
 extern int			errno;
 extern int			h_errno;
 
@@ -118,6 +120,8 @@ INIT_FUNC( mod_cosign_init )
 	p->pd_cfg = calloc( 1, sizeof( cosign_host_config ));
 	assert( p->pd_cfg );
     }
+
+    SSL_MUTEX_INIT;
 
     return( p );
 }

@@ -3,6 +3,9 @@
 #undef HAVE_LIBSSL
 #undef HAVE_X509_VERIFY_PARAM
 
+/* pthreads allows thread-safe filters */
+#define ENABLE_PTHREAD_SUPPORT 0
+
 /* kerberos and gssapi support */
 #undef KRB
 #undef GSS
@@ -27,3 +30,4 @@
 
 /* lighttpd */
 #undef LIGHTTPD
+

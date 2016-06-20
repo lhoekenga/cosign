@@ -35,6 +35,10 @@
 #include "cosign.h"
 #include "cosignpaths.h"
 #include "log.h"
+#include "mutex.h"
+
+cosign_mutex_t non_ssl_mutex = NULL;
+cosign_mutex_t ssl_mutex = NULL;
 
 static int	cosign_redirect( request_rec *, cosign_host_config * );
 
@@ -109,6 +113,9 @@ cosign_create_server_config( pool *p, server_rec *s )
 cosign_init( server_rec *s, pool *p )
 {
     extern char	*cosign_version;
+
+    ssl_mutex = create_mutex();
+    non_ssl_mutex = create_mutex();
 
     cosign_log( APLOG_NOTICE, s, "mod_cosign: version %s initialized.",
 	    cosign_version );

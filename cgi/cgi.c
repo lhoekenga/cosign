@@ -27,6 +27,10 @@
 #include "subfile.h"
 #include "factor.h"
 #include "mkcookie.h"
+#include "mutex.h"
+
+cosign_mutex_t non_ssl_mutex = NULL;
+cosign_mutex_t ssl_mutex = NULL;
 
 #define SERVICE_MENU	"/services/"
 #define LOOPWINDOW      30 
@@ -310,7 +314,10 @@ main( int argc, char *argv[] )
     if (( cosign_conf = getenv( "COSIGN_CGI_CONF" )) == NULL ) {
 	cosign_conf = _COSIGN_CONF;
     }
-    
+
+    ssl_mutex = create_mutex();
+    non_ssl_mutex = create_mutex();
+
     if ( cosign_config( cosign_conf ) < 0 ) {
 	fprintf( stderr, "Couldn't read %s\n", cosign_conf );
 	exit( 1 );

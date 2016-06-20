@@ -56,7 +56,14 @@ static ssize_t snet_readread ___P(( SNET *, char *, size_t, struct timeval * ));
     int
 snet_eof( SNET *sn )
 {
-    return ( sn->sn_flag & SNET_EOF );
+#if ENABLE_PTHREAD_SUPPORT
+    pthread_mutex_lock(&sn->mutex);
+#endif
+    int ret = sn->sn_flag & SNET_EOF;
+#if ENABLE_PTHREAD_SUPPORT
+    pthread_mutex_unlock(&sn->mutex);
+#endif
+    return ret;
 }
 
     SNET *
@@ -69,8 +76,16 @@ snet_attach( fd, max )
     if (( sn = (SNET *)malloc( sizeof( SNET ))) == NULL ) {
 	return( NULL );
     }
+
+#if ENABLE_PTHREAD_SUPPORT
+    pthread_mutex_init(&sn->mutex, NULL);
+#endif
+
     sn->sn_fd = fd;
     if (( sn->sn_rbuf = (char *)malloc( SNET_BUFLEN )) == NULL ) {
+#if ENABLE_PTHREAD_SUPPORT
+        pthread_mutex_destroy(&sn->mutex);
+#endif
 	free( sn );
 	return( NULL );
     }
@@ -80,6 +95,9 @@ snet_attach( fd, max )
     sn->sn_maxlen = max;
 
     if (( sn->sn_wbuf = (char *)malloc( SNET_BUFLEN )) == NULL ) {
+#if ENABLE_PTHREAD_SUPPORT
+        pthread_mutex_destroy(&sn->mutex);
+#endif
 	free( sn->sn_rbuf );
 	free( sn );
 	return( NULL );
@@ -109,7 +127,10 @@ snet_open( path, flags, mode, max )
 snet_close( SNET *sn )
 {
     int			fd;
-
+    
+#if ENABLE_PTHREAD_SUPPORT
+    pthread_mutex_destroy(&sn->mutex);
+#endif
     fd = sn->sn_fd;
     free( sn->sn_wbuf );
     free( sn->sn_rbuf );
@@ -123,6 +144,9 @@ snet_close( SNET *sn )
     void
 snet_timeout( SNET *sn, int flag, struct timeval *tv )
 {
+#if ENABLE_PTHREAD_SUPPORT
+    pthread_mutex_lock(&sn->mutex);
+#endif
     if ( flag & SNET_READ_TIMEOUT ) {
 	sn->sn_flag |= SNET_READ_TIMEOUT;
 	memcpy( &(sn->sn_read_timeout), tv, sizeof( struct timeval ));
@@ -131,6 +155,9 @@ snet_timeout( SNET *sn, int flag, struct timeval *tv )
 	sn->sn_flag |= SNET_WRITE_TIMEOUT;
 	memcpy( &(sn->sn_write_timeout), tv, sizeof( struct timeval ));
     }
+#if ENABLE_PTHREAD_SUPPORT
+    pthread_mutex_unlock(&sn->mutex);
+#endif
     return;
 }
 
@@ -148,10 +175,19 @@ snet_starttls( sn, sslctx, sslaccept )
 {
     int			rc;
 
+#if ENABLE_PTHREAD_SUPPORT
+    pthread_mutex_lock(&sn->mutex);
+#endif
     if (( sn->sn_ssl = SSL_new( sslctx )) == NULL ) {
+#if ENABLE_PTHREAD_SUPPORT
+        pthread_mutex_unlock(&sn->mutex);
+#endif
 	return( -1 );
     }
     if (( rc = SSL_set_fd( sn->sn_ssl, sn->sn_fd )) != 1 ) {
+#if ENABLE_PTHREAD_SUPPORT
+        pthread_mutex_unlock(&sn->mutex);
+#endif
 	return( rc );
     }
     if ( sslaccept ) {
@@ -162,6 +198,9 @@ snet_starttls( sn, sslctx, sslaccept )
     if ( rc == 1 ) {
 	sn->sn_flag |= SNET_TLS;
     }
+#if ENABLE_PTHREAD_SUPPORT
+    pthread_mutex_unlock(&sn->mutex);
+#endif
     return( rc );
 }
 #endif /* HAVE_LIBSSL */
@@ -179,11 +218,17 @@ snet_setsasl( sn, conn )
 
     /* XXX - flush cache */
 
+#if ENABLE_PTHREAD_SUPPORT
+    pthread_mutex_lock(&sn->mutex);
+#endif
     /* security layer security strength factor.  If 0, call to sasl_encode,
      * sasl_decode unnecessary
      */
     if (( rc = sasl_getprop( conn, SASL_SSF, (const void **) &ssfp))
 	    != SASL_OK ) {
+#if ENABLE_PTHREAD_SUPPORT
+        pthread_mutex_unlock(&sn->mutex);
+#endif
 	return( -1 );
     }
     sn->sn_saslssf = *ssfp;
@@ -191,6 +236,9 @@ snet_setsasl( sn, conn )
     /* security layer max output buf unsigned */
     if (( rc = sasl_getprop( conn, SASL_MAXOUTBUF, (const void **) &maxp))
 	    != SASL_OK ) {
+#if ENABLE_PTHREAD_SUPPORT
+        pthread_mutex_unlock(&sn->mutex);
+#endif
 	return( -1 );
     }
     sn->sn_saslmaxout = *maxp;
@@ -198,6 +246,9 @@ snet_setsasl( sn, conn )
     sn->sn_conn = conn;
     sn->sn_flag |= SNET_SASL;
 
+#if ENABLE_PTHREAD_SUPPORT
+    pthread_mutex_unlock(&sn->mutex);
+#endif
     return( 0 );
 }
 #endif /* HAVE_LIBSASL */
@@ -231,6 +282,10 @@ snet_writeftv( sn, tv, format, va_alist )
     int			is_long, is_longlong, is_unsigned, is_negative;
     char		*cur, *end;
 
+    char                *_wbuf;
+    size_t              _len;
+
+
 #ifdef __STDC__
     va_start( vl, format );
 #else /* __STDC__ */
@@ -247,6 +302,10 @@ snet_writeftv( sn, tv, format, va_alist )
 		sn->sn_wbuflen += SNET_BUFLEN;				\
 		end = sn->sn_wbuf + sn->sn_wbuflen;			\
 	    }		
+
+#if ENABLE_PTHREAD_SUPPORT
+    pthread_mutex_lock(&sn->mutex);
+#endif
 
     cur = sn->sn_wbuf;
     end = sn->sn_wbuf + sn->sn_wbuflen;
@@ -443,7 +502,14 @@ modifier:
 
     va_end( vl );
 
-    return( snet_write( sn, sn->sn_wbuf, cur - sn->sn_wbuf, tv ));
+    _wbuf = sn->sn_wbuf;
+    _len = cur - sn->sn_wbuf;
+    
+#if ENABLE_PTHREAD_SUPPORT
+    pthread_mutex_unlock(&sn->mutex);
+#endif
+    
+    return( snet_write( sn, _wbuf, _len, tv ));
 }
 
 /*
@@ -509,6 +575,10 @@ snet_write( sn, buf, len, tv )
     size_t		rlen = 0;
     struct timeval	default_tv;
 
+#if ENABLE_PTHREAD_SUPPORT
+    pthread_mutex_lock(&sn->mutex);
+#endif
+
 #ifdef HAVE_LIBSASL
     if (( sn->sn_flag & SNET_SASL ) && ( sn->sn_saslssf )) {
 	const char		*ebuf;
@@ -516,6 +586,10 @@ snet_write( sn, buf, len, tv )
 
 	/* Encode if SASL needs it */
 	if (( sasl_encode( sn->sn_conn, buf, len, &ebuf, &elen )) != SASL_OK ) {
+#if ENABLE_PTHREAD_SUPPORT
+	    pthread_mutex_unlock(&sn->mutex);
+#endif
+	      
 	    return( -1 );
 	}
 	buf = (char*)ebuf;
@@ -535,20 +609,34 @@ snet_write( sn, buf, len, tv )
 	     * If SSL_MODE_ENABLE_PARTIAL_WRITE has been set, this routine
 	     * can (abnormally) return less than a full write.
 	     */
-	    return( SSL_write( sn->sn_ssl, buf, len ));
+	    ssize_t ret = SSL_write( sn->sn_ssl, buf, len );
+#if ENABLE_PTHREAD_SUPPORT
+	    pthread_mutex_unlock(&sn->mutex);
+#endif
+	    return ( ret );
 #else
 	    return( -1 );
 #endif /* HAVE_LIBSSL */
 	} else {
-	    return( write( snet_fd( sn ), buf, len ));
+	    ssize_t ret = write( snet_fd( sn ), buf, len );
+#if ENABLE_PTHREAD_SUPPORT
+	    pthread_mutex_unlock(&sn->mutex);
+#endif
+	    return ( ret );
 	}
     }
 
     if (( oflags = fcntl( snet_fd( sn ), F_GETFL )) < 0 ) {
+#if ENABLE_PTHREAD_SUPPORT
+        pthread_mutex_unlock(&sn->mutex);
+#endif
 	return( -1 );
     }
     if (( oflags & O_NONBLOCK ) == 0 ) {
 	if ( fcntl( snet_fd( sn ), F_SETFL, oflags | O_NONBLOCK ) < 0 ) {
+#if ENABLE_PTHREAD_SUPPORT
+	    pthread_mutex_unlock(&sn->mutex);
+#endif
 	    return( -1 );
 	}
     }
@@ -558,10 +646,16 @@ snet_write( sn, buf, len, tv )
 	FD_SET( snet_fd( sn ), &fds );
 
 	if ( snet_select( snet_fd( sn ) + 1, NULL, &fds, NULL, tv ) < 0 ) {
+#if ENABLE_PTHREAD_SUPPORT
+	    pthread_mutex_unlock(&sn->mutex);
+#endif
 	    return( -1 );
 	}
 	if ( FD_ISSET( snet_fd( sn ), &fds ) == 0 ) {
 	    errno = ETIMEDOUT;
+#if ENABLE_PTHREAD_SUPPORT
+	    pthread_mutex_unlock(&sn->mutex);
+#endif
 	    return( -1 );
 	}
 
@@ -581,10 +675,16 @@ snet_write( sn, buf, len, tv )
 
 		    if ( snet_select( snet_fd( sn ) + 1,
 			    &fds, NULL, NULL, tv ) < 0 ) {
+#if ENABLE_PTHREAD_SUPPORT
+		        pthread_mutex_unlock(&sn->mutex);
+#endif
 			return( -1 );
 		    }
 		    if ( FD_ISSET( snet_fd( sn ), &fds ) == 0 ) {
 			errno = ETIMEDOUT;
+#if ENABLE_PTHREAD_SUPPORT
+			pthread_mutex_unlock(&sn->mutex);
+#endif
 			return( -1 );
 		    }
 
@@ -592,10 +692,16 @@ snet_write( sn, buf, len, tv )
 		    continue;
 
 		default :
+#if ENABLE_PTHREAD_SUPPORT
+		    pthread_mutex_unlock(&sn->mutex);
+#endif
 		    return( -1 );
 		}
 	    }
 #else
+#if ENABLE_PTHREAD_SUPPORT
+	    pthread_mutex_unlock(&sn->mutex);
+#endif
 	    return( -1 );
 #endif /* HAVE_LIBSSL */
 	} else {
@@ -603,6 +709,9 @@ snet_write( sn, buf, len, tv )
 		if ( errno == EAGAIN ) {
 		    continue;
 		}
+#if ENABLE_PTHREAD_SUPPORT
+		pthread_mutex_unlock(&sn->mutex);
+#endif
 		return( rc );
 	    }
 	}
@@ -614,9 +723,15 @@ snet_write( sn, buf, len, tv )
 
     if (( oflags & O_NONBLOCK ) == 0 ) {
 	if ( fcntl( snet_fd( sn ), F_SETFL, oflags ) < 0 ) {
+#if ENABLE_PTHREAD_SUPPORT
+	    pthread_mutex_unlock(&sn->mutex);
+#endif
 	    return( -1 );
 	}
     }
+#if ENABLE_PTHREAD_SUPPORT
+    pthread_mutex_unlock(&sn->mutex);
+#endif
     return( rlen );
 }
 
@@ -731,6 +846,10 @@ snet_read( sn, buf, len, tv )
 {
     ssize_t		rc;
 
+#if ENABLE_PTHREAD_SUPPORT
+    pthread_mutex_lock(&sn->mutex);
+#endif
+
     /*
      * If there's data already buffered, make sure it's not left over
      * from snet_getline(), and then return whatever's left.
@@ -746,7 +865,6 @@ snet_read( sn, buf, len, tv )
 	return( rc );
     }
 
-    rc = snet_readread( sn, buf, len, tv );
     if (( rc > 0 ) && ( sn->sn_rstate == SNET_FUZZY )) {
 	sn->sn_rstate = SNET_BOL;
 	if ( *buf == '\n' ) {
@@ -758,6 +876,9 @@ snet_read( sn, buf, len, tv )
 	}
     }
 
+#if ENABLE_PTHREAD_SUPPORT
+    pthread_mutex_unlock(&sn->mutex);
+#endif
     return( rc );
 }
 
@@ -775,6 +896,9 @@ snet_getline( sn, tv )
     ssize_t		rc;
     extern int		errno;
 
+#if ENABLE_PTHREAD_SUPPORT
+    pthread_mutex_lock(&sn->mutex);
+#endif
     for ( eol = sn->sn_rcur; ; eol++ ) {
 	if ( eol >= sn->sn_rend ) {				/* fill */
 	    /* pullup */
@@ -791,10 +915,16 @@ snet_getline( sn, tv )
 	    if ( sn->sn_rend == sn->sn_rbuf + sn->sn_rbuflen ) {
 		if ( sn->sn_maxlen != 0 && sn->sn_rbuflen >= sn->sn_maxlen ) {
 		    errno = ENOMEM;
+#if ENABLE_PTHREAD_SUPPORT
+		    pthread_mutex_unlock(&sn->mutex);
+#endif
 		    return( NULL );
 		}
 		if (( sn->sn_rbuf = (char *)realloc( sn->sn_rbuf,
 			sn->sn_rbuflen + SNET_BUFLEN )) == NULL ) {
+#if ENABLE_PTHREAD_SUPPORT
+		    pthread_mutex_unlock(&sn->mutex);
+#endif
 		    exit( 1 );
 		}
 		sn->sn_rbuflen += SNET_BUFLEN;
@@ -805,6 +935,9 @@ snet_getline( sn, tv )
 	    if (( rc = snet_readread( sn, sn->sn_rend,
 		    sn->sn_rbuflen - ( sn->sn_rend - sn->sn_rbuf ),
 		    tv )) < 0 ) {
+#if ENABLE_PTHREAD_SUPPORT
+	        pthread_mutex_unlock(&sn->mutex);
+#endif
 		return( NULL );
 	    }
 	    if ( rc == 0 ) {	/* EOF */
@@ -816,6 +949,9 @@ snet_getline( sn, tv )
 		if ( sn->sn_rcur < sn->sn_rend ) {
 		    break;
 		}
+#if ENABLE_PTHREAD_SUPPORT
+		pthread_mutex_unlock(&sn->mutex);
+#endif
 		return( NULL );
 	    }
 	    sn->sn_rend += rc;
@@ -840,6 +976,10 @@ snet_getline( sn, tv )
     *eol = '\0';
     line = sn->sn_rcur;
     sn->sn_rcur = eol + 1;
+
+#if ENABLE_PTHREAD_SUPPORT
+    pthread_mutex_unlock(&sn->mutex);
+#endif
     return( line );
 }
 
